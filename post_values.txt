@@ -1,0 +1,5 @@
+aws.regions.frankfurt.zone1.server1.load_avg_5,20160112183500,0.5
+
+aws.regions.frankfurt.zone1.server1.load_avg_5,20160112183600,0.5
+aws.regions.frankfurt.zone1.server1.load_avg_5,20160112183700,0.8
+xxx
