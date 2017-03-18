@@ -4,3 +4,5 @@ env/
 env3/
 *.pyc
 .idea
+.Vagrant/
+*.log

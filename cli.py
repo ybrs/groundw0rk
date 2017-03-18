@@ -4,8 +4,12 @@ import pandas.io.common
 import time
 import os
 from math import floor
+import click
+from utils import u
 
-from app import DATA_DIR, prepare_dirs
+from app import prepare_dirs, DATA_DIR
+import logging
+logger = logging.getLogger(__name__)
 
 def date_parser(ts):
     return datetime.datetime.fromtimestamp(float(ts))
@@ -49,14 +53,12 @@ def load_files(metric_name, ts_start, ts_end=None):
     ts_start_dt = datetime.datetime.fromtimestamp(ts_start_ts)
     ts_end_dt = datetime.datetime.fromtimestamp(ts_end_ts)
 
-    print("start", ts_start_dt)
-    print("end", ts_end_dt)
-
-    dir = prepare_dirs(metric_name)
+    mdir = prepare_dirs(metric_name)
     # locate files
-    cvsfiles = os.listdir(dir)
+    cvsfiles = os.listdir(mdir)
 
     flist = []
+    # round the ts to get the filenames
     t1 = floor(ts_start_ts/3600) * 3600
     t2 = floor(ts_end_ts/3600) * 3600
     for c in cvsfiles:
@@ -64,14 +66,15 @@ def load_files(metric_name, ts_start, ts_end=None):
         if n >= t1 and n <= t2:
             flist.append(c)
 
-    print(flist)
-
+    logger.info("need to analyze %s ts between %s - %s files %s", ts_start_dt, ts_end_dt, len(flist), flist)
     if not flist:
-        return
+        return None
+
+    lt = time.time()
 
     l = []
     for i in flist:
-        f = open(os.path.join(dir, i), 'r')
+        f = open(os.path.join(mdir, i), 'r')
         try:
             # TODO: we can load data and then convert dateindex.
             # df = pd.read_csv(io.StringIO(t), header=None, sep=';', index_col=[0])
@@ -80,15 +83,18 @@ def load_files(metric_name, ts_start, ts_end=None):
             l.append(df)
         except pandas.io.common.EmptyDataError:
             pass
+    logger.info("loading took - %s", time.time() - lt)
     df = pd.concat(l)
-    print(df.describe())
-    print(df)
-    print("---" * 5)
-    # df.sort_index()
-    print(df.index)
-    print("--- duplicates ----")
-    # print(df.index.get_duplicates())
-    print("// ----------------")
+    logger.info("loaded %s datapoints", len(df))
+
+    # print(df.describe())
+    # print(df)
+    # print("---" * 5)
+    # # df.sort_index()
+    # print(df.index)
+    # print("--- duplicates ----")
+    # # print(df.index.get_duplicates())
+    # print("// ----------------")
     return df
 
     # df2 = df.groupby(level=0).resample('1m').ffill()
@@ -97,9 +103,69 @@ def load_files(metric_name, ts_start, ts_end=None):
     # print("//------")
     # return df2
 
+@click.group()
+def cli():
+    pass
+
+
+def _metrics(customer=None):
+    """
+    if customer is None return everything
+
+    :param customer:
+    :return:
+    """
+    if not customer:
+        customers = os.listdir(DATA_DIR)
+    else:
+        customers = []
+
+    m = []
+    for customer in customers:
+        d = os.path.join(DATA_DIR, customer)
+        for root, dirs, files in os.walk(d):
+            if not dirs:
+                m.append([customer, root.replace(d, b'')[1:].replace(b'/', b'.')])
+    return m
+
+@cli.command()
+def metrics():
+    for m in _metrics():
+        print('{} | {}'.format(*u(m)))
+
+@cli.command()
+def metric_dirs():
+    m = []
+    for root, dirs, files in os.walk(DATA_DIR):
+        if not dirs:
+            m.append(root)
+    for i in m:
+        print(i.decode())
+
+@cli.command()
+def metric_stats():
+    for customer, metric in _metrics():
+        files = _files(metric, customer=customer)
+
+
+def _files(mname, customer):
+    d = prepare_dirs(mname, customer=customer)
+    return os.listdir(d)
+
+
+@cli.command()
+def files():
+    for customer, metric in _metrics():
+        print('{} | {} '.format(*u(customer, metric)))
+        for f in _files(metric, customer=customer):
+            print(f)
+
+
 
 if __name__ == '__main__':
-    import time
-    t1 = time.time()
-    load_files(b'aws.regions.frankfurt.zone1.server9.load_avg_5', ts_start=0)
-    print(">>> loading took>>>", time.time() - t1)
+    # cli.add_command(metrics)
+    # cli.add_command(files)
+    cli()
+    # t1 = time.time()
+    # load_files(b'aws.regions.frankfurt.zone1.server9.load_avg_5', ts_start=0)
+    # print(">>> loading took>>>", time.time() - t1)

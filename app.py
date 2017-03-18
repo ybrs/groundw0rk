@@ -6,6 +6,11 @@ import sqlite3
 import numpy as np
 import pandas as pd
 import math
+from utils import u, b
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 
 DATA_DIR = b'./data'
 DB_DIR = b'./db'
@@ -57,8 +62,8 @@ def update_db_index(metric_name, ts, val, file_path):
 async def main(request):
     return text("ok")
 
-def prepare_dirs(metric_name):
-    dir = b'/'.join([DATA_DIR, b('customer_1'), b(metric_name).replace(b'.', b'/')])
+def prepare_dirs(metric_name, customer=b'customer_1'):
+    dir = b'/'.join([DATA_DIR, customer, b(metric_name).replace(b'.', b'/')])
     if not os.path.exists(dir):
         os.makedirs(dir, exist_ok=True)
     return dir
@@ -69,34 +74,6 @@ def get_fhandle(fname):
     file_handles[fname] = open(fname, 'a+')
     print("new file handle -", fname)
     return file_handles[fname]
-
-def b(v):
-    if isinstance(v, str):
-        return v.encode()
-    if isinstance(v, bytes):
-        return v
-    return str(v).encode()
-
-
-def u(v):
-    """
-    always returns a string.
-
-    if v is a list of somethings, returns list of strings
-
-    :param v:
-    :return:
-    """
-    if isinstance(v, str):
-        return v
-
-    if isinstance(v, bytes):
-        return v.decode()
-
-    if isinstance(v, list):
-        return [u(vt) for vt in v]
-
-    return str(v)
 
 def save_record(metric_name, ts, val):
     dir = prepare_dirs(metric_name)
@@ -172,20 +149,60 @@ async def api_name(request, name):
 
     return text('-err:Unsupported')
 
+def int_or_none(i):
+    if i is None:
+        return i
+    return int(i)
+
+from sanic.exceptions import SanicException
+
+class NotAuthenticated(SanicException):
+    status_code = 401
+
+class NotAllowed(SanicException):
+    status_code = 403
+
+import base64
+
+def auth(request, authenticator):
+    auths = request.headers.get('authorization', '')
+    if not auths:
+        raise NotAuthenticated('not authenticated')
+
+    t = auths.split('Basic ')[1]
+    decoded = base64.b64decode(t)
+    user, passwd = decoded.split(b':')
+    authenticated = authenticator(user, passwd)
+    if not authenticated:
+        raise NotAllowed('credentials wrong, or not allowed')
+
+    return user, passwd
+
 @app.route('/api/v1/query_range')
 async def query_range(request):
     from cli import load_files
+    auth(request, authenticator=lambda u, p: True)
+
+    start = int(request.args.get('start', 0))
+    end = int_or_none(request.args.get('end', None))
     metric_name = request.args['query'][0].encode()
-    ds = load_files(metric_name, ts_start=0, ts_end=0)
+    ds = load_files(metric_name, ts_start=start, ts_end=end)
 
     # print(request.args)
+    if ds is None:
+        vals = []
+    else:
+        # resample now.
+        step = request.args.get('step', None)
+        if step:
+            ds = ds.resample('{}s'.format(step)).mean()
 
-    # convert to epoch
-    ds.index = ds.index.astype(np.int64) // 10 ** 9
+        # convert to epoch
+        ds.index = ds.index.astype(np.int64) // 10 ** 9
 
-    vals = []
-    for i, v in ds.itertuples():
-        vals.append((float(i), float(v)))
+        vals = []
+        for i, v in ds.itertuples():
+            vals.append((float(i), float(v)))
 
     return json({
            "status" : "success",
