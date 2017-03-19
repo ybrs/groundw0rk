@@ -20,7 +20,7 @@ def u(*v):
     :return:
     """
     if len(v) == 1:
-        return _u(v)
+        return _u(v[0])
     return [_u(i) for i in v]
 
 def _u(v):
@@ -36,4 +36,6 @@ def _u(v):
     return str(v)
 
 if __name__ == '__main__':
-    print(u('1', 2))
+    # print(u('1', 2))
+    print(u('1'))
+    # print(u(1234))

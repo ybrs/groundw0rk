@@ -40,6 +40,10 @@ def relative_or_absolute_ts(ts):
             ts = ts_end - r
     return ts
 
+def is_datafile(fname):
+    import re
+    return re.match('^[0-9\-]+\.csv', fname)
+
 
 def load_files(metric_name, ts_start, ts_end=None):
     from app import b
@@ -74,6 +78,8 @@ def load_files(metric_name, ts_start, ts_end=None):
 
     l = []
     for i in flist:
+        if not is_datafile(i):
+            continue
         f = open(os.path.join(mdir, i), 'r')
         try:
             # TODO: we can load data and then convert dateindex.

@@ -25,6 +25,7 @@ def prepare_db():
     c = db_conn.cursor()
     try:
         c.execute('''CREATE TABLE metrics(name text, last_ts int, last_val real)''')
+        c.execute('''CREATE TABLE metric_props(metric_name text, name text, value text)''')
         c.execute('''CREATE TABLE metrics_files(metric_name text, min_ts int, max_ts int, file_path text)''')
     except:
         # TODO: check metrics already exists
