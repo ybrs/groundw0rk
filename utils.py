@@ -35,6 +35,9 @@ def _u(v):
 
     return str(v)
 
+def strip_all(l):
+    return [i.strip() for i in l]
+
 if __name__ == '__main__':
     # print(u('1', 2))
     print(u('1'))

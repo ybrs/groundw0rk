@@ -1,94 +1,59 @@
-import asyncio
-from sanic import Sanic
-from sanic.response import json, text
+from functools import wraps
+
+from flask import Flask, request, jsonify
 import os
 import sqlite3
 import numpy as np
 import pandas as pd
 import math
-from utils import u, b
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
+from flask import Response
 
 DATA_DIR = b'./data'
 DB_DIR = b'./db'
-
-file_handles = {}
-
 INDEX_DB = b'/'.join([DB_DIR, b'index.db'])
 
 db_conn = sqlite3.connect(INDEX_DB.decode())
 
-def prepare_db():
-    c = db_conn.cursor()
-    try:
-        c.execute('''CREATE TABLE metrics(name text, last_ts int, last_val real)''')
-        c.execute('''CREATE TABLE metric_props(metric_name text, name text, value text)''')
-        c.execute('''CREATE TABLE metrics_files(metric_name text, min_ts int, max_ts int, file_path text)''')
-    except:
-        # TODO: check metrics already exists
-        pass
-    db_conn.commit()
+from utils import u, b
+import redis
 
-prepare_db()
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
-app = Sanic()
+app = Flask(__name__)
 
-def update_db_index(metric_name, ts, val, file_path):
-    c = db_conn.cursor()
-    c.execute("select name from metrics where name=?", (metric_name,) )
-    row = c.fetchone()
-    if not row:
-        c.execute('''
-        insert into metrics(name, last_ts, last_val)
-        values (?, ?, ?)
-        ''', (metric_name, ts, val))
-    else:
-        # update maybe
-        pass
+rds = redis.StrictRedis()
 
-    c.execute('select metric_name from metrics_files where metric_name=? and file_path=?', (metric_name, file_path))
-    row = c.fetchone()
-    if not row:
-        c.execute('''
-          insert into metrics_files(metric_name, file_path)
-          values (?, ?)
-        ''', (metric_name, file_path))
 
-    db_conn.commit()
 
-@app.route("/")
-async def main(request):
-    return text("ok")
+def check_auth(username, password):
+    """This function is called to check if a username /
+    password combination is valid.
+    """
+    return True # username == 'admin' and password == 'secret'
 
-def prepare_dirs(metric_name, customer=b'customer_1'):
-    dir = b'/'.join([DATA_DIR, customer, b(metric_name).replace(b'.', b'/')])
-    if not os.path.exists(dir):
-        os.makedirs(dir, exist_ok=True)
-    return dir
+def authenticate():
+    """Sends a 401 response that enables basic auth"""
+    return Response(
+    'Could not verify your access level for that URL.\n'
+    'You have to login with proper credentials', 401,
+    {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
-def get_fhandle(fname):
-    if file_handles.get(fname):
-        return file_handles.get(fname)
-    file_handles[fname] = open(fname, 'a+')
-    print("new file handle -", fname)
-    return file_handles[fname]
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f('customer_1', *args, **kwargs)
+    return decorated
 
-def save_record(metric_name, ts, val):
-    dir = prepare_dirs(metric_name)
-    hour_ts = math.floor(ts/3600)*3600
-    fname = os.path.join(u(dir), u(hour_ts))
-    fname = '{}.csv'.format(u(fname))
+def queue_record(tenant, metric_name, ts, val):
+    print("pushing to - metrics_queue")
+    rds.lpush('metrics_queue', ','.join(u([tenant, metric_name, ts, val])))
 
-    fhandle = get_fhandle(fname)
-    fhandle.write(','.join(u([ts, val])))
-    fhandle.write('\n')
-    #
-    update_db_index(metric_name, ts, val, fname)
-
-def process_line(ln):
+def process_line(tenant, ln):
     if not ln:
         return
     vals = [v.strip() for v in ln.split(b',')]
@@ -96,24 +61,25 @@ def process_line(ln):
         return
     metric_name, ts, val = vals[0:3]
     # print(metric_name, ts, val)
-    save_record(metric_name, float(ts), val)
+    queue_record(tenant, metric_name, float(ts), val)
+
+@app.route("/")
+def main():
+    return "ok+"
 
 @app.route("/metrics", methods=['POST'])
-async def metrics(request):
-    try:
-        lines = request.body.split(b'\n')
-        for ln in lines:
-            process_line(ln)
-    except:
-        raise
-        # return text('-err')
-    return text("+ok")
+def metrics(tenant='customer_1'):
+    lines = request.data.split(b'\n')
+    print("->", u(request.data))
+    for ln in lines:
+        process_line(tenant, ln)
+    return "+ok"
 
 
 @app.route('/collectd-post', methods=['POST'])
-async def collectd_post(request):
+def collectd_post(request):
     import json as jsn
-    data = jsn.loads(request.body)
+    data = jsn.loads(request.data)
     for ln in data:
         ts = ln['time']
 
@@ -128,13 +94,14 @@ async def collectd_post(request):
             v = t[-1]
             if 'cpu.' in metric_name:
                 print(ln)
-            save_record(metric_name.encode(), ts, v)
+            queue_record(metric_name.encode(), ts, v)
 
-    return text("+ok\r\n")
+    return "+ok\r\n"
 
 # these are for mimicking prometheus api
 @app.route('/api/v1/label/<name>/values')
-async def api_name(request, name):
+@requires_auth
+async def api_name(name):
 
     if name == '__name__':
         c = db_conn.cursor()
@@ -143,46 +110,23 @@ async def api_name(request, name):
         ''')
 
         names = [row[0] for row in c.fetchall()]
-        return json({
+        return jsonify({
            "status" : "success",
            "data" : names
         })
 
-    return text('-err:Unsupported')
+    return '-err:Unsupported'
+
 
 def int_or_none(i):
     if i is None:
         return i
     return int(i)
 
-from sanic.exceptions import SanicException
-
-class NotAuthenticated(SanicException):
-    status_code = 401
-
-class NotAllowed(SanicException):
-    status_code = 403
-
-import base64
-
-def auth(request, authenticator):
-    auths = request.headers.get('authorization', '')
-    if not auths:
-        raise NotAuthenticated('not authenticated')
-
-    t = auths.split('Basic ')[1]
-    decoded = base64.b64decode(t)
-    user, passwd = decoded.split(b':')
-    authenticated = authenticator(user, passwd)
-    if not authenticated:
-        raise NotAllowed('credentials wrong, or not allowed')
-
-    return user, passwd
-
 @app.route('/api/v1/query_range')
+@requires_auth
 async def query_range(request):
     from cli import load_files
-    auth(request, authenticator=lambda u, p: True)
 
     start = int(request.args.get('start', 0))
     end = int_or_none(request.args.get('end', None))
@@ -205,7 +149,7 @@ async def query_range(request):
         for i, v in ds.itertuples():
             vals.append((float(i), float(v)))
 
-    return json({
+    return jsonify({
            "status" : "success",
            "data" : {
               "resultType" : "matrix",
@@ -220,17 +164,6 @@ async def query_range(request):
            }
         })
 
-@asyncio.coroutine
-def periodic(app, loop):
-    while True:
-        for k, f in file_handles.items():
-            f.flush()
-        yield from asyncio.sleep(3)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8001, debug=False, after_start=periodic)
-
-
-"""
-curl -v -X POST --data-binary @post_values.txt http://localhost:8001/metrics/
-"""
+if __name__ == '__main__':
+    app.run(port=8001, debug=True)
