@@ -50,7 +50,6 @@ def requires_auth(f):
     return decorated
 
 def queue_record(tenant, metric_name, ts, val):
-    print("pushing to - metrics_queue")
     rds.lpush('metrics_queue', ','.join(u([tenant, metric_name, ts, val])))
 
 def process_line(tenant, ln):
@@ -70,14 +69,14 @@ def main():
 @app.route("/metrics", methods=['POST'])
 def metrics(tenant='customer_1'):
     lines = request.data.split(b'\n')
-    print("->", u(request.data))
     for ln in lines:
         process_line(tenant, ln)
     return "+ok"
 
 
 @app.route('/collectd-post', methods=['POST'])
-def collectd_post(request):
+@requires_auth
+def collectd_post(tenant):
     import json as jsn
     data = jsn.loads(request.data)
     for ln in data:
@@ -94,14 +93,14 @@ def collectd_post(request):
             v = t[-1]
             if 'cpu.' in metric_name:
                 print(ln)
-            queue_record(metric_name.encode(), ts, v)
+            queue_record(tenant, metric_name.encode(), ts, v)
 
     return "+ok\r\n"
 
 # these are for mimicking prometheus api
 @app.route('/api/v1/label/<name>/values')
 @requires_auth
-async def api_name(name):
+async def api_name(tenant, name):
 
     if name == '__name__':
         c = db_conn.cursor()
@@ -125,7 +124,7 @@ def int_or_none(i):
 
 @app.route('/api/v1/query_range')
 @requires_auth
-async def query_range(request):
+async def query_range(tenant):
     from cli import load_files
 
     start = int(request.args.get('start', 0))
