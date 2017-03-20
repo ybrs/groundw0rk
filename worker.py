@@ -63,6 +63,60 @@ def metric_type_or_none(val):
     return [val, None, None]
 
 
+def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
+    c = db_conn.cursor()
+    query = '''
+        select distinct metric_name from metric_props where {}
+    '''
+
+    where = ['tenant = "{}"'.format(tenant)]
+    if metric_name_pattern:
+        # TODO: this is not the right way
+        where.append('metric_name like "{}"'.format(metric_name_pattern.replace('*', '%')))
+
+    if not prop_val_op:
+        query = query.format(' and '.join(where))
+        c.execute(query.format(distinct='distinct'))
+        rows = c.fetchall()
+        return [row[0] for row in rows]
+
+    if prop_val_op and len(prop_val_op) == 1:
+        for prop, op, val in prop_val_op:
+            assert op in ('<', '>', '<=', '>=', '=')
+            colname = metric_prop_type(val)
+            where.append('name="{propname}" and {colname} {op} "{value}"'.format(propname=prop, colname=colname, op=op, value=val))
+
+        query = query.format(' and '.join(where))
+        # print("---- query ---")
+        # print(query)
+        # print("// --- query --")
+        c.execute(query.format(distinct='distinct'))
+        rows = c.fetchall()
+        return [row[0] for row in rows]
+
+    if prop_val_op and len(prop_val_op) > 1:
+
+        # we have a complicated format now.
+        props_w = []
+        for prop, op, val in prop_val_op:
+            assert op in ('<', '>', '<=', '>=', '=')
+            colname = metric_prop_type(val)
+            props_w.append('(name="{propname}" and {colname} {op} "{value}")'.format(propname=prop, colname=colname, op=op, value=val))
+        where.append(' or '.join(props_w))
+
+        query = '''
+            select metric_name, count(metric_name) from metric_props where {}
+        '''
+
+        query = query.format(' and '.join(where))
+        print("---- query ---")
+        print(query)
+        print("// --- query --")
+        c.execute(query)
+        rows = c.fetchall()
+        return [row[0] for row in rows if row[1] == len(prop_val_op)]
+
+
 def get_metric_props_as_dict(tenant, metric_name):
     c = db_conn.cursor()
     c.execute('''select name, value_text, value_int, value_float
