@@ -8,6 +8,10 @@ def b(v):
         return v.encode()
     if isinstance(v, bytes):
         return v
+
+    if isinstance(v, list):
+        return [b(vt) for vt in v]
+
     return str(v).encode()
 
 def u(*v):
