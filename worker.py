@@ -74,6 +74,8 @@ def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
         # TODO: this is not the right way
         where.append('metric_name like "{}"'.format(metric_name_pattern.replace('*', '%')))
 
+    # TODO: split
+
     if not prop_val_op:
         query = query.format(' and '.join(where))
         c.execute(query.format(distinct='distinct'))
@@ -87,9 +89,6 @@ def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
             where.append('name="{propname}" and {colname} {op} "{value}"'.format(propname=prop, colname=colname, op=op, value=val))
 
         query = query.format(' and '.join(where))
-        # print("---- query ---")
-        # print(query)
-        # print("// --- query --")
         c.execute(query.format(distinct='distinct'))
         rows = c.fetchall()
         return [row[0] for row in rows]
@@ -109,9 +108,6 @@ def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
         '''
 
         query = query.format(' and '.join(where))
-        print("---- query ---")
-        print(query)
-        print("// --- query --")
         c.execute(query)
         rows = c.fetchall()
         return [row[0] for row in rows if row[1] == len(prop_val_op)]
@@ -197,7 +193,7 @@ def get_fhandle(fname):
     logging.info("new file handle - %s", fname)
     return file_handles[fname]
 
-def save_record(tenant, metric_name, ts, val):
+def save_record(tenant, metric_name, ts, val, metric_props):
     dir = prepare_dirs(metric_name)
     hour_ts = math.floor(ts/3600)*3600
     fname = os.path.join(u(dir), u(hour_ts))
@@ -206,7 +202,9 @@ def save_record(tenant, metric_name, ts, val):
     fhandle.write(','.join(u([ts, val])))
     fhandle.write('\n')
     #
-    update_db_index(tenant, metric_name, ts, val, fname)
+    if not metric_props:
+        metric_props = {}
+    update_db_index(tenant, metric_name, ts, val, fname, metric_props)
 
 def str_int_or_float_value(s):
     if '.' in s:
@@ -215,14 +213,22 @@ def str_int_or_float_value(s):
 
 def process_line(valln):
     val = u(valln)
-    try:
-        tenant, metric_name, ts, val = val.split(',')
-    except:
-        logging.error("format error - %s", val)
-        return
+    values = val.split(',')
+    tenant, metric_name, ts, val = values[0:4]
+
+    if len(values) == 4:
+        metric_props = {}
+    else:
+        mp = values[4:]
+        metric_props = {}
+        for m in mp:
+            k, v = m.split('=')
+            metric_props[k] = v
+
     ts = str_int_or_float_value(ts)
     val = str_int_or_float_value(val)
-    save_record(tenant, metric_name, ts, val)
+
+    save_record(tenant, metric_name, ts, val, metric_props)
 
 async def go():
     import time

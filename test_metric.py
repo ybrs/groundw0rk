@@ -62,6 +62,7 @@ class TestMetricDatabase(unittest.TestCase):
         ])
         assert metrics == ['foo.bar.baz']
 
+        # this 'and' s metrics
         metrics = find_metrics('customer_12', None, [
             ('floatval', '>', 1.2),
             ('hostid', '>', 131)

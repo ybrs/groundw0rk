@@ -49,8 +49,15 @@ def requires_auth(f):
         return f('customer_1', *args, **kwargs)
     return decorated
 
-def queue_record(tenant, metric_name, ts, val):
-    rds.lpush('metrics_queue', ','.join(u([tenant, metric_name, ts, val])))
+def queue_record(tenant, metric_name, ts, val, props=None):
+    p = ''
+    if props:
+        prop_str = []
+        for k, v in props.items():
+            prop_str.append('='.join([k, v]))
+        p = ','.join(prop_str)
+
+    rds.lpush('metrics_queue', ','.join(u([tenant, metric_name, ts, val, p])))
 
 def process_line(tenant, ln):
     if not ln:
@@ -62,15 +69,48 @@ def process_line(tenant, ln):
     # print(metric_name, ts, val)
     queue_record(tenant, metric_name, float(ts), val)
 
+def process_line_graphite(tenant, ln):
+    """
+    this is coming from httpPostHandler of Diamond
+    :param tenant:
+    :param ln:
+    :return:
+    """
+    if not ln:
+        return
+    vals = [v.strip() for v in ln.split(b' ')]
+    if len(vals) < 3:
+        return
+    metric_name, val, ts = vals[0:3]
+    # print(metric_name, ts, val)
+    queue_record(tenant, metric_name, float(ts), val)
+
+
 @app.route("/")
 def main():
     return "ok+"
 
+@app.route("/gw0/metrics", methods=['POST'])
+def gw0_metrics(tenant='customer_1'):
+    data = request.json
+    print(">>>", data)
+    # for ln in lines:
+    #     process_line_graphite(tenant, ln)
+    for ln in data:
+        queue_record(tenant, ln['name'], float(ln['ts']), ln['value'], props=ln.get('meta', {}))
+
+    return "+ok"
+
 @app.route("/metrics", methods=['POST'])
 def metrics(tenant='customer_1'):
+    data = request.get_data()
+    print(">>>", data)
     lines = request.data.split(b'\n')
+    print("------")
+    print(lines)
+    print('//----')
     for ln in lines:
-        process_line(tenant, ln)
+        process_line_graphite(tenant, ln)
     return "+ok"
 
 
