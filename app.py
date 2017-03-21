@@ -162,44 +162,55 @@ def int_or_none(i):
         return i
     return int(i)
 
+def load_metrics(metric_name, start, end, step=None):
+    from cli import load_files
+    ds = load_files(metric_name, ts_start=start, ts_end=end)
+    if ds is None:
+        return []
+
+    # resample now.
+    if step:
+        ds = ds.resample('{}s'.format(step)).mean()
+
+    # convert to epoch
+    ds.index = ds.index.astype(np.int64) // 10 ** 9
+
+    vals = []
+    for i, v in ds.itertuples():
+        vals.append((float(i), float(v)))
+    return vals
+
 @app.route('/api/v1/query_range')
 @requires_auth
-async def query_range(tenant):
-    from cli import load_files
+def query_range(tenant):
+
+
+    from worker import find_metrics
+
+    metric_name = request.args.get('query')
+    metric_names = find_metrics(tenant, metric_name)
 
     start = int(request.args.get('start', 0))
     end = int_or_none(request.args.get('end', None))
-    metric_name = request.args['query'][0].encode()
-    ds = load_files(metric_name, ts_start=start, ts_end=end)
+    step = request.args.get('step', None)
+
+    result = []
+    for metric_name in metric_names:
+        vals = load_metrics(metric_name, start, end, step)
+        result.append({
+            "metric": {
+                "__name__": u(metric_name),
+            },
+            "values": vals
+        })
 
     # print(request.args)
-    if ds is None:
-        vals = []
-    else:
-        # resample now.
-        step = request.args.get('step', None)
-        if step:
-            ds = ds.resample('{}s'.format(step)).mean()
-
-        # convert to epoch
-        ds.index = ds.index.astype(np.int64) // 10 ** 9
-
-        vals = []
-        for i, v in ds.itertuples():
-            vals.append((float(i), float(v)))
 
     return jsonify({
            "status" : "success",
            "data" : {
               "resultType" : "matrix",
-              "result" : [
-                 {
-                    "metric" : {
-                       "__name__" : metric_name,
-                    },
-                    "values" : vals
-                }
-              ]
+              "result" : result
            }
         })
 
