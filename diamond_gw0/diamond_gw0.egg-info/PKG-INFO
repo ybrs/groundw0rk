@@ -1,0 +1,17 @@
+Metadata-Version: 1.1
+Name: diamond-gw0
+Version: 0.0.1
+Summary: extends diamond metric collector to send metrics to groundw0rk
+Home-page: https://github.com/ybrs/groundw0rk/diamond_gw0/
+Author: ybrs
+Author-email: aybars.badur@gmail.com
+License: BSD
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Topic :: Database
+Classifier: Topic :: Software Development :: Libraries :: Python Modules

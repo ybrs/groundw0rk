@@ -1,0 +1,8 @@
+setup.py
+diamond_gw0/__init__.py
+diamond_gw0/handler.py
+diamond_gw0.egg-info/PKG-INFO
+diamond_gw0.egg-info/SOURCES.txt
+diamond_gw0.egg-info/dependency_links.txt
+diamond_gw0.egg-info/requires.txt
+diamond_gw0.egg-info/top_level.txt
