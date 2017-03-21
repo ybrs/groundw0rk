@@ -6,8 +6,8 @@ import os
 from math import floor
 import click
 from utils import u
-
-from app import prepare_dirs, DATA_DIR
+from worker import prepare_dirs
+from app import DATA_DIR
 import logging
 logger = logging.getLogger(__name__)
 
@@ -40,9 +40,10 @@ def relative_or_absolute_ts(ts):
             ts = ts_end - r
     return ts
 
+
 def is_datafile(fname):
     import re
-    return re.match('^[0-9\-]+\.csv', fname)
+    return re.match('^[0-9\-]+\.csv', u(fname))
 
 
 def load_files(metric_name, ts_start, ts_end=None):

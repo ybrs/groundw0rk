@@ -16,14 +16,13 @@ logging.basicConfig(level=logging.DEBUG)
 rds = redis.StrictRedis()
 
 DATA_DIR = b(os.getenv('DATA_DIR', b'./data'))
-print("->>>", DATA_DIR)
 DB_DIR = b(os.getenv('DB_DIR', b'./db'))
 
 file_handles = {}
 
 INDEX_DB = b'/'.join([DB_DIR, b'index.db'])
 
-db_conn = sqlite3.connect(INDEX_DB.decode())
+db_conn = sqlite3.connect(INDEX_DB.decode(), check_same_thread=False)
 
 def prepare_db():
     c = db_conn.cursor()
@@ -41,7 +40,6 @@ def prepare_db():
     db_conn.commit()
 
 prepare_db()
-
 
 def metric_prop_type(val):
     if isinstance(val, int):
