@@ -6,7 +6,7 @@ import os
 from math import floor
 import click
 from utils import u
-from worker import prepare_dirs
+from worker import prepare_dirs, find_metrics
 from app import DATA_DIR
 import logging
 logger = logging.getLogger(__name__)
@@ -109,6 +109,25 @@ def load_files(metric_name, ts_start, ts_end=None):
     # print(df2.T)
     # print("//------")
     # return df2
+
+def get_column_name_from_list_or_function(list_or_fn, fname):
+    if list_or_fn is None:
+        return fname
+
+    if isinstance(list_or_fn, list) or isinstance(list_or_fn, set):
+        return list_or_fn.pop()
+
+    if callable(list_or_fn):
+        return list_or_fn(fname)
+
+def load_files_m(*args, ts_start=0, ts_end=0, column_names=None):
+    c = []
+    for fname in args:
+        ts = load_files(fname, ts_start, ts_end)
+        ts.columns = [get_column_name_from_list_or_function(column_names, fname)]
+        c.append(ts)
+    return pd.concat(c, axis=1)
+
 
 @click.group()
 def cli():

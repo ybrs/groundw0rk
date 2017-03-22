@@ -1,7 +1,5 @@
 
 import asyncio
-from sanic import Sanic
-from sanic.response import json, text
 import os
 import sqlite3
 import numpy as np

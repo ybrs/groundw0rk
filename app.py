@@ -7,7 +7,16 @@ import numpy as np
 import pandas as pd
 import math
 
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.dates import DateFormatter
+
+import datetime
+from io import BytesIO
+import random
+
 from flask import Response
+from flask import make_response
 
 DATA_DIR = b'./data'
 DB_DIR = b'./db'
@@ -24,8 +33,6 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 
 rds = redis.StrictRedis()
-
-
 
 def check_auth(username, password):
     """This function is called to check if a username /
@@ -180,11 +187,43 @@ def load_metrics(metric_name, start, end, step=None):
         vals.append((float(i), float(v)))
     return vals
 
+
+def collect_metric_names(args):
+    r = []
+    for t in args:
+        print("-->", t)
+        k, v = t
+        if k in ('metric', 'metric[]'):
+          r.append(v)
+    return r
+
+
+@app.route("/out.png")
+def outpng(tenant='customer_1'):
+    from cli import load_files_m
+    from worker import find_metrics
+
+    metric_names = request.args.getlist('metric[]') + request.args.getlist('metric')
+
+    mnames = []
+    for mn in metric_names:
+        metrics = find_metrics(tenant, mn)
+        mnames += metrics
+
+    ts = load_files_m(*mnames)
+
+    fig = ts.plot().get_figure()
+    canvas = FigureCanvas(fig)
+    png_output = BytesIO()
+    canvas.print_png(png_output)
+    response=make_response(png_output.getvalue())
+    response.headers['Content-Type'] = 'image/png'
+    return response
+
+
 @app.route('/api/v1/query_range')
 @requires_auth
 def query_range(tenant):
-
-
     from worker import find_metrics
 
     metric_name = request.args.get('query')
@@ -203,8 +242,6 @@ def query_range(tenant):
             },
             "values": vals
         })
-
-    # print(request.args)
 
     return jsonify({
            "status" : "success",
