@@ -5,15 +5,22 @@ import requests
 import random
 import time
 
+buffer = []
+
 def post_random_data(ts, i):
     """
     we generate data for a month
 
     :return:
     """
+    global buffer
     val = random.randint(1, 1000) / (random.randint(1, 100))
-    s = 'aws.regions.amsterdam.zone1.server{i}.load_avg_5,{ts},{val}'.format(i=i, ts=int(ts), val=val)
-    requests.post('http://localhost:8001/metrics', data=s)
+    s = 'aws.regions.amsterdam.zone1.server{i}.load_avg_5 {val} {ts}'.format(i=i, ts=int(ts), val=val)
+    buffer.append(s)
+    if len(buffer) > 100:
+        s = '\n'.join(buffer)
+        requests.post('http://localhost:8001/metrics', data=s)
+        buffer = []
     # print(s)
 
 if __name__ == '__main__':

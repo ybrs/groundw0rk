@@ -66,11 +66,33 @@ def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
         if not c.endswith(b'.csv'):
             continue
         if b'-' in c:
-            continue
+            n1, n2 = b(c).replace(b'.csv', b'').split(b'-')
+            print(">", n1, n2)
+            """
+            we simply check the start part
+            because
+            say we have these times
 
-        n = int(b(c).split(b'.csv')[0])
-        if n >= t1 and n <= t2:
-            flist.append(c)
+            1,2,3,4,5 =>
+
+            its summarized to
+                1-7.csv
+
+            and the client wants
+
+                wants => 1-5
+
+            we have to return 1-7
+
+            """
+
+            if int(n1) >= t1:
+                flist.append(c)
+
+        else:
+            n = int(b(c).split(b'.csv')[0])
+            if n >= t1 and n <= t2:
+                flist.append(c)
     return mdir, flist
 
 def summarize_metric_files(metric_name, ts_start_ts, ts_end_ts):

@@ -218,8 +218,9 @@ def process_line(valln):
         mp = values[4:]
         metric_props = {}
         for m in mp:
-            k, v = m.split('=')
-            metric_props[k] = v
+            if m:
+                k, v = m.split('=')
+                metric_props[k] = v
 
     ts = str_int_or_float_value(ts)
     val = str_int_or_float_value(val)
