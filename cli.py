@@ -4,6 +4,8 @@ import pandas.io.common
 import time
 import os
 from math import floor
+import time
+#
 import click
 from utils import u
 from worker import prepare_dirs, find_metrics
@@ -45,18 +47,12 @@ def is_datafile(fname):
     import re
     return re.match('^[0-9\-]+\.csv', u(fname))
 
-
-def load_files(metric_name, ts_start, ts_end=None):
+def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
     from app import b
-    if not ts_end:
+
+    if not ts_end_ts:
         # TODO: utc baby
-        ts_end = int(time.time())
-
-    ts_start_ts = relative_or_absolute_ts(ts_start)
-    ts_end_ts = relative_or_absolute_ts(ts_end)
-
-    ts_start_dt = datetime.datetime.fromtimestamp(ts_start_ts)
-    ts_end_dt = datetime.datetime.fromtimestamp(ts_end_ts)
+        ts_end_ts = int(time.time()) + 1
 
     mdir = prepare_dirs(metric_name)
     # locate files
@@ -67,9 +63,84 @@ def load_files(metric_name, ts_start, ts_end=None):
     t1 = floor(ts_start_ts/3600) * 3600
     t2 = floor(ts_end_ts/3600) * 3600
     for c in cvsfiles:
+        if not c.endswith(b'.csv'):
+            continue
+        if b'-' in c:
+            continue
+
         n = int(b(c).split(b'.csv')[0])
         if n >= t1 and n <= t2:
             flist.append(c)
+    return mdir, flist
+
+def summarize_metric_files(metric_name, ts_start_ts, ts_end_ts):
+    mdir, flist = files_for_metrics(metric_name, ts_start_ts, ts_end_ts)
+    dfs = []
+    for f in u(flist):
+        if '-' in f:
+            continue
+        f = os.path.join(u(mdir), u(f))
+        df = pd.read_csv(f, header=None, parse_dates=[0], index_col=0, date_parser=date_parser)
+        print(">>>", f, df.index[0], df.index[-1], len(df))
+        dfs.append(df)
+    return dfs
+
+def concat_files(metric_name, mdir, files):
+    import numpy as np
+    dfs = []
+    for f in u(files):
+        df = pd.read_csv(f, header=None, parse_dates=[0], index_col=0, date_parser=date_parser)
+        print(">>>", f, df.index[0], df.index[-1], len(df))
+        dfs.append(df)
+
+    df = pd.concat(dfs)
+    df = df.sort_index()
+    df.index = df.index.astype(np.int64) / 10**9
+    path = os.path.join(u(mdir), '{}-{}.csv'.format(int(df.index[0]), int(df.index[-1])))
+    df.to_csv(path, header=False)
+    # now we can delete files.
+    for f in u(files):
+        os.unlink(f)
+
+    return df
+
+
+def concat_metric_files(metric_name):
+    chunk_size = 64 * 1024 # 64 kbs
+    mdir, flist = files_for_metrics(metric_name, 0, 0)
+    flist = sorted([f for f in u(flist) if '-' not in f])
+    flist = flist[0:-1] # pop the last file
+    total = 0
+    chunk_files = []
+
+    for f in u(flist):
+        if '-' in f:
+            continue
+        f = os.path.join(u(mdir), u(f))
+
+        fsize = os.path.getsize(os.path.join(f))
+        total += fsize
+
+        if total >= chunk_size:
+            concat_files(metric_name, mdir, chunk_files)
+            total = fsize
+            chunk_files = []
+
+        chunk_files.append(f)
+
+def load_files(metric_name, ts_start, ts_end=None):
+
+    if not ts_end:
+        # TODO: utc baby
+        ts_end = int(time.time()) + 1
+
+    ts_start_ts = relative_or_absolute_ts(ts_start)
+    ts_end_ts = relative_or_absolute_ts(ts_end)
+
+    ts_start_dt = datetime.datetime.fromtimestamp(ts_start_ts)
+    ts_end_dt = datetime.datetime.fromtimestamp(ts_end_ts)
+
+    mdir, flist = files_for_metrics(metric_name, ts_start_ts, ts_end_ts)
 
     logger.info("need to analyze %s ts between %s - %s files %s", ts_start_dt, ts_end_dt, len(flist), flist)
     if not flist:
