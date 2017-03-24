@@ -8,17 +8,43 @@ import math
 from utils import u, b, strip_all
 import redis
 
+from config import DATA_DIR, INDEX_DB, MAX_OPEN_FILES_LIMIT
+import collections
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 rds = redis.StrictRedis()
 
-DATA_DIR = b(os.getenv('DATA_DIR', b'./data'))
-DB_DIR = b(os.getenv('DB_DIR', b'./db'))
 
-file_handles = {}
+class FileHandles(object):
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.handles = collections.OrderedDict()
 
-INDEX_DB = b'/'.join([DB_DIR, b'index.db'])
+    def __getitem__(self, key):
+        value = self.handles.pop(key)
+        self.handles[key] = value
+        return value
+
+    def get(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            return None
+
+    def __setitem__(self, key, value):
+        try:
+            self.handles.pop(key)
+        except KeyError:
+            if len(self.handles) >= self.capacity:
+                self.handles.popitem(last=False)
+        self.handles[key] = value
+
+    def items(self):
+        return self.handles.items()
+
+file_handles = FileHandles(MAX_OPEN_FILES_LIMIT)
 
 db_conn = sqlite3.connect(INDEX_DB.decode(), check_same_thread=False)
 
@@ -186,7 +212,7 @@ def get_fhandle(fname):
     if file_handles.get(fname):
         return file_handles.get(fname)
     file_handles[fname] = open(fname, 'a+')
-    logging.info("new file handle - %s", fname)
+    logging.info("new file handle - %s %s", fname, len(file_handles.handles))
     return file_handles[fname]
 
 def save_record(tenant, metric_name, ts, val, metric_props):
@@ -241,7 +267,7 @@ async def go():
             counter = 0
             continue
 
-        logging.debug("received %s", val)
+        # logging.debug("received %s", val)
         counter += 1
         process_line(val[1])
         ltime = time.time()

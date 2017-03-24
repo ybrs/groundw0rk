@@ -9,7 +9,7 @@ import time
 import click
 from utils import u
 from worker import prepare_dirs, find_metrics
-from app import DATA_DIR
+from config import DATA_DIR
 import logging
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,37 @@ def is_datafile(fname):
     import re
     return re.match('^[0-9\-]+\.csv', u(fname))
 
+
+def in_range(min_max_tuples, wanted_min, wanted_max):
+    """
+    say we have these times
+
+    1,2,3,4,5 => 1-5.csv
+    6,7,8,9,10 => 6-10.csv
+    11,12,13,14,15 => 11-15.csv
+    16,17,18,19,20 => 16-20.csv
+
+    and the client wants
+
+        wants => min=2, max=12
+
+    we return [1-5.csv, 6-10.csv, 11-15.csv]
+
+    :param min_max_tuples list of tuples(min, max, index)
+    :return list of indexes
+
+    """
+    lmin = 0
+    lmax = len(min_max_tuples)
+    for i, (min, max, idx) in enumerate(min_max_tuples):
+        if wanted_min >= min and wanted_min <= max:
+            lmin = i
+        if wanted_max >= min and wanted_max <= max:
+            lmax = i
+    return min_max_tuples[lmin:lmax+1]
+
+
+
 def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
     from app import b
 
@@ -62,38 +93,22 @@ def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
     # round the ts to get the filenames
     t1 = floor(ts_start_ts/3600) * 3600
     t2 = floor(ts_end_ts/3600) * 3600
+    ranged_files = []
     for c in cvsfiles:
         if not c.endswith(b'.csv'):
             continue
         if b'-' in c:
-            n1, n2 = b(c).replace(b'.csv', b'').split(b'-')
-            print(">", n1, n2)
-            """
-            we simply check the start part
-            because
-            say we have these times
-
-            1,2,3,4,5 =>
-
-            its summarized to
-                1-7.csv
-
-            and the client wants
-
-                wants => 1-5
-
-            we have to return 1-7
-
-            """
-
-            if int(n1) >= t1:
-                flist.append(c)
-
+            nmin, nmax = b(c).replace(b'.csv', b'').split(b'-')
+            ranged_files.append((int(nmin), int(nmax), c))
         else:
             n = int(b(c).split(b'.csv')[0])
             if n >= t1 and n <= t2:
                 flist.append(c)
-    return mdir, flist
+
+    include_files = in_range(ranged_files, ts_start_ts, ts_end_ts)
+    flist += [f for _, _, f in include_files]
+
+    return mdir, sorted(flist)
 
 def summarize_metric_files(metric_name, ts_start_ts, ts_end_ts):
     mdir, flist = files_for_metrics(metric_name, ts_start_ts, ts_end_ts)
@@ -150,6 +165,7 @@ def concat_metric_files(metric_name):
 
         chunk_files.append(f)
 
+
 def load_files(metric_name, ts_start, ts_end=None):
 
     if not ts_end:
@@ -174,12 +190,18 @@ def load_files(metric_name, ts_start, ts_end=None):
     for i in flist:
         if not is_datafile(i):
             continue
-        f = open(os.path.join(mdir, i), 'r')
+        # f = open(os.path.join(mdir, i), 'r')
         try:
             # TODO: we can load data and then convert dateindex.
             # df = pd.read_csv(io.StringIO(t), header=None, sep=';', index_col=[0])
             # df.index = pd.to_datetime(df.index, unit='s')
-            df = pd.read_csv(f, header=None, parse_dates=[0], index_col=0, date_parser=date_parser)
+            df = pd.read_csv(u(os.path.join(mdir, i)), header=None, parse_dates=[0],
+                             prefix='C',
+                             index_col=0,
+                             date_parser=date_parser,
+                             # engine='c',
+                             # memory_map=True
+                             )
             l.append(df)
         except pandas.io.common.EmptyDataError:
             pass
@@ -195,13 +217,14 @@ def load_files(metric_name, ts_start, ts_end=None):
     # print("--- duplicates ----")
     # # print(df.index.get_duplicates())
     # print("// ----------------")
-    return df
-
     # df2 = df.groupby(level=0).resample('1m').ffill()
     # print("--------")
     # print(df2.T)
     # print("//------")
     # return df2
+
+    return df
+
 
 def get_column_name_from_list_or_function(list_or_fn, fname):
     if list_or_fn is None:
