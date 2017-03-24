@@ -10,6 +10,8 @@ import click
 from utils import u
 from worker import prepare_dirs, find_metrics
 from config import DATA_DIR
+import numpy as np
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -123,7 +125,6 @@ def summarize_metric_files(metric_name, ts_start_ts, ts_end_ts):
     return dfs
 
 def concat_files(metric_name, mdir, files):
-    import numpy as np
     dfs = []
     for f in u(files):
         df = pd.read_csv(f, header=None, parse_dates=[0], index_col=0, date_parser=date_parser)
