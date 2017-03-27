@@ -1,4 +1,5 @@
 import re
+import inspect
 
 class NoArg(object):
     pass
@@ -32,6 +33,23 @@ def parse(cmd, ts_start, ts_end):
         ret.append(n)
     return ret
 
+from functools import wraps
+
+
+
+def guess_signature_if_needed(fn, signature):
+    if signature:
+        return signature
+    sig = inspect.signature(fn)
+    s = []
+    for v in sig.parameters.values():
+        s.append((v.name, v.kind, v.default))
+    args = s.pop(0)
+    ret = ['<*{}>'.format(args[0])]
+    for sa in s:
+        ret.append('<{}>'.format(sa[0]))
+    return ' '.join(ret)
+
 class Commands(object):
     def __init__(self):
         self.commands = {}
@@ -41,6 +59,16 @@ class Commands(object):
 
     def get(self, fn_name):
         return self.commands.get(fn_name)
+
+    def command(self, signature=None):
+        # we try to guess signature
+        def wrapper(fn):
+            self.add_command(fn, guess_signature_if_needed(fn, signature))
+            @wraps(fn)
+            def wrap_(*args, **kwargs):
+                fn(*args, **kwargs)
+            return wrap_
+        return wrapper
 
 def asis(s):
     return s
@@ -66,6 +94,7 @@ type_fixers = {
 }
 
 def parse_fn_signature(s):
+    assert s
     g = re.findall(r'\<(.*?)\>', s)
     if not g:
         raise Exception('function signature is wrong')
@@ -91,7 +120,11 @@ def parse_and_return_fns(cmd, ts_start, ts_end, commands):
     ret = []
     for ln in parsed:
         fn_name = ln[0]
-        fn, signature = commands.get(fn_name)
+
+        fn_signature = commands.get(fn_name)
+        if not fn_signature:
+            raise Exception('function [%s] is not registered' % fn_name)
+        fn, signature = fn_signature
         if not fn:
             raise Exception('registered function not found {}'.format(fn_name))
         args = ln[1]
@@ -120,6 +153,7 @@ def run_commands(fn_list):
                 calling['args'] = call_with
             else:
                 calling['kwargs'][arg['name']] = call_with.pop()
+
         # now calling the function with args
         fnargs = returned + [a for a in calling['args'] if a is not NoArg]
         returned = fn(*fnargs, **calling['kwargs'])
@@ -127,6 +161,7 @@ def run_commands(fn_list):
             returned = list(returned)
         if not isinstance(returned, list):
             returned = [list]
+    return returned
 
 
 # this is our default commander
