@@ -206,14 +206,13 @@ def outpng(tenant='customer_1'):
     from cli import load_files_m
     from worker import find_metrics
 
-    metric_names = request.args.getlist('metric[]') + request.args.getlist('metric')
+    metric_names, start, end, step = parse_query_args(tenant)
+    print("->", metric_names)
+    # metric_names = request.args.getlist('metric[]') + request.args.getlist('metric')
 
-    mnames = []
-    for mn in metric_names:
-        metrics = find_metrics(tenant, mn)
-        mnames += metrics
 
-    ts = load_files_m(*mnames)
+
+    ts = load_files_m(*metric_names, ts_start=start, ts_end=end, step=step)
 
     fig = ts.plot().get_figure()
     canvas = FigureCanvas(fig)
@@ -255,23 +254,53 @@ def relative_time(s):
 
     return int(time.time()) - asseconds
 
+def any_argument(*name_list, default=None):
+    for k in name_list:
+        v = request.args.get(k, default)
+        if v:
+            return v
+    return default
+
+def any_argument_list(*name_list, default=None):
+    for k in name_list + tuple('{}[]'.format(n) for n in name_list):
+        v = request.args.getlist(k, default)
+        if v:
+            return v
+    return default
+
+
+
+def parse_query_args(tenant):
+    from worker import find_metrics
+    metric_names = any_argument_list('query', 'metric', default=None)
+
+    mnames = []
+    for mn in metric_names:
+        metrics = find_metrics(tenant, mn)
+        mnames += metrics
+
+    print("metric_names", mnames)
+    start = any_argument('start', 'from', 'since', 0)
+    print("->", start)
+    try:
+        start = int(start)
+    except ValueError:
+        start = relative_time(start)
+
+    end = any_argument('end', 'to', default=None)
+    if end is not None:
+        if end.startswith('-'):
+            end = relative_time(start)
+        else:
+            end = int_or_none(end)
+
+    step = request.args.get('step', None)
+    return mnames, start, end, step
 
 @app.route('/api/v1/query_range')
 @requires_auth
 def query_range(tenant):
-    from worker import find_metrics
-
-    metric_name = request.args.get('query')
-    metric_names = find_metrics(tenant, metric_name)
-    try:
-        start = int(request.args.get('start', 0))
-    except ValueError:
-        start = relative_time(request.args.get('start'))
-
-    print("=>", start)
-
-    end = int_or_none(request.args.get('end', None))
-    step = request.args.get('step', None)
+    metric_names, start, end, step = parse_query_args(tenant)
 
     result = []
     for metric_name in metric_names:

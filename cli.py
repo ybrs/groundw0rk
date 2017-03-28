@@ -247,10 +247,10 @@ def get_column_name_from_list_or_function(list_or_fn, fname):
     if callable(list_or_fn):
         return list_or_fn(fname)
 
-def load_files_m(*args, ts_start=0, ts_end=0, column_names=None):
+def load_files_m(*args, ts_start=0, ts_end=0, step=None, column_names=None):
     c = []
     for fname in args:
-        ts = load_files(fname, ts_start, ts_end)
+        ts = load_files(fname, ts_start, ts_end, step)
         ts.columns = [get_column_name_from_list_or_function(column_names, fname)]
         c.append(ts)
     return pd.concat(c, axis=1)
