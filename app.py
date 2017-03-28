@@ -24,7 +24,8 @@ db_conn = sqlite3.connect(INDEX_DB.decode())
 
 from utils import u, b
 import redis
-
+import commands
+import time
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -168,16 +169,19 @@ def int_or_none(i):
         return i
     return int(i)
 
-def load_metrics(metric_name, start, end, step=None):
-    from cli import load_files
-    ds = load_files(metric_name, ts_start=start, ts_end=end)
-    if ds is None:
-        return []
+from parser import commands, run_commands
 
-    # resample now.
-    if step:
-        ds = ds.resample('{}s'.format(step)).mean()
-
+def load_metrics(query, start, end, step=None):
+    # from cli import load_files
+    # ds = load_files(metric_name, ts_start=start, ts_end=end)
+    # if ds is None:
+    #     return []
+    #
+    # # resample now.
+    # if step:
+    #     ds = ds.resample('{}s'.format(step)).mean()
+    ds = commands.run(query, start_ts=start, end_ts=end, step=step)
+    ds = ds[0]
     # convert to epoch
     ds.index = ds.index.astype(np.int64) // 10 ** 9
 
@@ -219,6 +223,38 @@ def outpng(tenant='customer_1'):
     response.headers['Content-Type'] = 'image/png'
     return response
 
+tunits = {
+    's': 1,
+    'm': 60,
+    'min': 60,
+    'h': 60*60,
+    'd': 24 * 60 * 60,
+    'mon': 30 * 24 * 60 * 60,
+    'y': 365 * 24 * 60 * 60,
+}
+
+def relative_time(s):
+    """
+    time can be a string eg:
+        -1h
+        -2d
+        -30d
+
+    :param s:
+    :return:
+    """
+    import re
+    g = re.match(r'(-?)([0-9]+)([a-zA-Z]+?)$', s)
+    if not g:
+        raise Exception('not a time string')
+
+    before, val, unit = g.groups()
+
+    unit_multiplier = tunits.get(unit, 1)
+    asseconds = unit_multiplier * int(val)
+
+    return int(time.time()) - asseconds
+
 
 @app.route('/api/v1/query_range')
 @requires_auth
@@ -227,8 +263,13 @@ def query_range(tenant):
 
     metric_name = request.args.get('query')
     metric_names = find_metrics(tenant, metric_name)
+    try:
+        start = int(request.args.get('start', 0))
+    except ValueError:
+        start = relative_time(request.args.get('start'))
 
-    start = int(request.args.get('start', 0))
+    print("=>", start)
+
     end = int_or_none(request.args.get('end', None))
     step = request.args.get('step', None)
 

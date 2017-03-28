@@ -167,7 +167,17 @@ def concat_metric_files(metric_name):
         chunk_files.append(f)
 
 
-def load_files(metric_name, ts_start, ts_end=None):
+def load_files(metric_name, ts_start, ts_end=None, step=None):
+    """
+    we pass step here just in case we try something smart when
+    loading files. its not used for now.
+
+    :param metric_name:
+    :param ts_start:
+    :param ts_end:
+    :param step:
+    :return:
+    """
 
     if not ts_end:
         # TODO: utc baby
@@ -223,7 +233,7 @@ def load_files(metric_name, ts_start, ts_end=None):
     # print(df2.T)
     # print("//------")
     # return df2
-
+    print("0> returning - ", df, type(df))
     return df
 
 
