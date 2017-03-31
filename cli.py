@@ -267,6 +267,19 @@ def load_files(metric_name, ts_start, ts_end=None, step=None):
     # print("//------")
     # return df2
     # print("0> returning - ", df, type(df))
+
+    # TODO: we can load data and then convert dateindex.
+    # df = pd.read_csv(io.StringIO(t), header=None, sep=';', index_col=[0])
+    # df.index = pd.to_datetime(df.index, unit='s')
+    # df = pd.read_csv(u(os.path.join(mdir, i)), header=None,
+    #                  parse_dates=[0],
+    #                  prefix='C',
+    #                  index_col=0,
+    #                  date_parser=date_parser,
+    #                  # engine='c',
+    #                  # memory_map=True
+    #                  )
+
     return df
 
 
