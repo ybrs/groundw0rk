@@ -79,6 +79,8 @@ def in_range(min_max_tuples, wanted_min, wanted_max):
     return min_max_tuples[lmin:lmax+1]
 
 
+def any_(*args):
+    return any(args)
 
 def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
     from app import b
@@ -97,13 +99,20 @@ def files_for_metrics(metric_name, ts_start_ts, ts_end_ts):
     t2 = floor(ts_end_ts/3600) * 3600
     ranged_files = []
     for c in cvsfiles:
-        if not c.endswith(b'.csv'):
+        if not any_(c.endswith(b'.csv'), c.endswith(b'.csv.gz')):
             continue
+
+        if c.endswith(b'.csv'):
+            file_ext = b'.csv'
+
+        if c.endswith(b'.csv.gz'):
+            file_ext = b'.csv.gz'
+
         if b'-' in c:
-            nmin, nmax = b(c).replace(b'.csv', b'').split(b'-')
+            nmin, nmax = b(c).replace(file_ext, b'').split(b'-')
             ranged_files.append((int(nmin), int(nmax), c))
         else:
-            n = int(b(c).split(b'.csv')[0])
+            n = int(b(c).split(file_ext)[0])
             if n >= t1 and n <= t2:
                 flist.append(c)
 
@@ -206,19 +215,26 @@ def load_files(metric_name, ts_start, ts_end=None, step=None):
             # TODO: we can load data and then convert dateindex.
             # df = pd.read_csv(io.StringIO(t), header=None, sep=';', index_col=[0])
             # df.index = pd.to_datetime(df.index, unit='s')
-            df = pd.read_csv(u(os.path.join(mdir, i)), header=None, parse_dates=[0],
+            df = pd.read_csv(u(os.path.join(mdir, i)), header=None,
+                             parse_dates=[0],
                              prefix='C',
                              index_col=0,
                              date_parser=date_parser,
-                             # engine='c',
+                             engine='c',
+                             na_filter=False,
+                             low_memory=False,
                              # memory_map=True
                              )
             l.append(df)
+            # import gzip
+            # with gzip.open(os.path.join(mdir, i), 'rb') as f:
+            #     file_content = f.read()
+            #     print(len(file_content))
         except pandas.io.common.EmptyDataError:
             pass
     logger.info("loading took - %s", time.time() - lt)
     df = pd.concat(l)
-    logger.info("loaded %s datapoints", len(df))
+    # logger.info("loaded %s datapoints", len(df))
 
     # print(df.describe())
     # print(df)
@@ -233,7 +249,7 @@ def load_files(metric_name, ts_start, ts_end=None, step=None):
     # print(df2.T)
     # print("//------")
     # return df2
-    print("0> returning - ", df, type(df))
+    # print("0> returning - ", df, type(df))
     return df
 
 

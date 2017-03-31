@@ -48,9 +48,23 @@ def authenticate():
     'You have to login with proper credentials', 401,
     {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
+def if_true(cond, fn):
+    """
+    if the condition is true return cond
+    else return fn()
+    :param cond:
+    :param fn:
+    :return:
+    """
+    if cond:
+        return cond
+    return fn()
+
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if not request.authorization:
+            return authenticate()
         auth = request.authorization
         customer = check_auth(auth.username, auth.password)
         if not auth or not customer:
@@ -196,7 +210,6 @@ def load_metrics(query, start, end, step=None):
 def collect_metric_names(args):
     r = []
     for t in args:
-        print("-->", t)
         k, v = t
         if k in ('metric', 'metric[]'):
           r.append(v)
@@ -267,8 +280,6 @@ def any_argument_list(*name_list, default=None):
             return v
     return default
 
-
-
 def parse_query_args(tenant):
     metric_names = any_argument_list('query', 'metric', default=None)
 
@@ -277,13 +288,13 @@ def parse_query_args(tenant):
         metrics = find_metrics(tenant, mn)
         mnames += metrics
 
-    print("metric_names", mnames)
-    start = any_argument('start', 'from', 'since', 0)
-    print("->", start)
+    start = any_argument('start', 'from', 'since', default=0)
+
     try:
         start = int(start)
     except ValueError:
         start = relative_time(start)
+
 
     end = any_argument('end', 'to', default=None)
     if end is not None:
@@ -295,11 +306,20 @@ def parse_query_args(tenant):
     step = request.args.get('step', None)
     return mnames, start, end, step
 
+@app.route('/api/v1/explore_metrics')
+@requires_auth
+def explore_metrics(tenant):
+    metric_names, start, end, step = parse_query_args(tenant)
+    return jsonify({
+        'tenant': tenant,
+        'metrics': metric_names
+    })
+
+
 @app.route('/api/v1/query_range')
 @requires_auth
 def query_range(tenant):
     metric_names, start, end, step = parse_query_args(tenant)
-
     result = []
     for metric_name in metric_names:
         vals = load_metrics(metric_name, start, end, step)

@@ -85,8 +85,32 @@ def metric_type_or_none(val):
     return [val, None, None]
 
 
-def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
+def rebuild_metrics():
+    """
+    walks over data path and re-inserts metrics.
+    :return:
+    """
+    pass
+
+
+def find_metrics_by_name(tenant, metric_name_pattern):
     c = db_conn.cursor()
+
+    query = '''
+            select distinct name from metrics
+            where tenant=? and name like ?
+        '''
+    c.execute(query, (tenant, metric_name_pattern.replace('*', '%')))
+    rows = c.fetchall()
+    return [row[0] for row in rows]
+
+
+def find_metrics(tenant, metric_name_pattern, prop_val_op=None):
+    if not prop_val_op:
+        return find_metrics_by_name(tenant, metric_name_pattern)
+
+    c = db_conn.cursor()
+
     query = '''
         select distinct metric_name from metric_props where {}
     '''
