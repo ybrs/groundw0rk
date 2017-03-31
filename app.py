@@ -19,6 +19,8 @@ from flask import Response
 from flask import make_response
 
 from config import INDEX_DB
+from worker import find_metrics
+from cli import load_files_m
 
 db_conn = sqlite3.connect(INDEX_DB.decode())
 
@@ -203,9 +205,6 @@ def collect_metric_names(args):
 
 @app.route("/out.png")
 def outpng(tenant='customer_1'):
-    from cli import load_files_m
-    from worker import find_metrics
-
     metric_names, start, end, step = parse_query_args(tenant)
     print("->", metric_names)
     # metric_names = request.args.getlist('metric[]') + request.args.getlist('metric')
@@ -271,7 +270,6 @@ def any_argument_list(*name_list, default=None):
 
 
 def parse_query_args(tenant):
-    from worker import find_metrics
     metric_names = any_argument_list('query', 'metric', default=None)
 
     mnames = []

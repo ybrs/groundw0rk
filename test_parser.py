@@ -9,16 +9,16 @@ class TestParser(unittest.TestCase):
 
     def test_parser(self):
         from parser import NoArg
-        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 ', 0, 0),
-                               [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '0'])])
+        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 ', 0, 0, 1),
+                               [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '0', '1'])])
 
-        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 | multiply 3.14', 0, -1),
-                            [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '-1']),
+        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 | multiply 3.14', 0, -1, 1),
+                            [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '-1', '1']),
                              ('multiply', ['3.14'])
                              ])
 
-        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 | multiply 3.14 | moving_avg', 0, 0),
-                         [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '0']),
+        self.assertEqual(parse('aws.regions.amsterdam.zone1.server1.load_avg_5 | multiply 3.14 | moving_avg', 0, 0, 1),
+                         [('load_files_m', ['aws.regions.amsterdam.zone1.server1.load_avg_5', '0', '0', '1']),
                           ('multiply', ['3.14']),
                           ('moving_avg', [NoArg])
 
@@ -51,7 +51,7 @@ class TestParser(unittest.TestCase):
         commands.add_command(pct_change, "<*df>")
         commands.add_command(cond_set, "<*df> <cond:str> <val:numeric>")
 
-        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5', 0, 0, commands)
+        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5', 0, 0, 1, commands)
 
         assert len(fn_and_args) == 1
         assert fn_and_args[0]['fn'] == load_files_m
@@ -61,7 +61,7 @@ class TestParser(unittest.TestCase):
         assert fn_and_args[0]['expected_args'][2]['name'] == 'ts_end'
         assert fn_and_args[0]['expected_args'][2]['fixer'] == float
 
-        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 | moving_avg', 0, 0, commands)
+        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 | moving_avg', 0, 0, 1, commands)
         assert len(fn_and_args) == 2
         assert fn_and_args[0]['fn'] == load_files_m
         assert fn_and_args[0]['expected_args'][0]['name'] == '*metric_names'
@@ -70,7 +70,7 @@ class TestParser(unittest.TestCase):
         assert fn_and_args[0]['expected_args'][2]['name'] == 'ts_end'
         assert fn_and_args[0]['expected_args'][2]['fixer'] == float
 
-        parsed = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 aws.regions.amsterdam.zone1.server1.load_avg_10 | pct_change | cond_set >100 100', 0, 0, commands)
+        parsed = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 aws.regions.amsterdam.zone1.server1.load_avg_10 | pct_change | cond_set >100 100', 0, 0, 1, commands)
         r = run_commands(parsed)
         assert len(r[0]) == 250 \
                and isinstance(r[0], pd.core.frame.DataFrame)
@@ -102,10 +102,10 @@ class TestParser(unittest.TestCase):
         assert commands.commands['pct_change'][1] == '<*df>'
         self.assertEqual(commands.commands['cond_set'][1], '<*df> <cond> <val>')
 
-        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 | moving_avg ', 0, 0, commands)
+        fn_and_args = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 | moving_avg ', 0, 0, None, commands)
         assert fn_and_args[0]['fn'].__name__ == load_files_m.__name__
 
-        parsed = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 aws.regions.amsterdam.zone1.server1.load_avg_10 | pct_change | cond_set >100 100', 0, 0, commands)
+        parsed = parse_and_return_fns('aws.regions.amsterdam.zone1.server1.load_avg_5 aws.regions.amsterdam.zone1.server1.load_avg_10 | pct_change | cond_set >100 100', 0, 0, 1, commands)
         r = run_commands(parsed)
         assert len(r[0]) == 250 \
                and isinstance(r[0], pd.core.frame.DataFrame)
