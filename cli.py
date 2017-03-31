@@ -175,6 +175,32 @@ def concat_metric_files(metric_name):
 
         chunk_files.append(f)
 
+def file_loader_csv(f):
+    with open(f, 'rb') as f:
+        file_content = f.read()
+        for ln in file_content.split(b'\n'):
+            if ln:
+                ts, val = ln.split(b',')
+                yield ts, val
+
+def file_loader_csv_gz(f):
+    import gzip
+    with gzip.open(f, 'rb') as f:
+        file_content = f.read()
+        for ln in file_content.split(b'\n'):
+            if ln:
+                ts, val = ln.split(b',')
+                yield ts, val
+
+extension_loader = {
+    'csv.gz': file_loader_csv_gz,
+    'csv': file_loader_csv
+}
+
+def get_loadable_file_ext_name(f):
+    for i in extension_loader.keys():
+        if f.endswith(i):
+            return i
 
 def load_files(metric_name, ts_start, ts_end=None, step=None):
     """
@@ -210,30 +236,21 @@ def load_files(metric_name, ts_start, ts_end=None, step=None):
     for i in flist:
         if not is_datafile(i):
             continue
-        # f = open(os.path.join(mdir, i), 'r')
-        try:
-            # TODO: we can load data and then convert dateindex.
-            # df = pd.read_csv(io.StringIO(t), header=None, sep=';', index_col=[0])
-            # df.index = pd.to_datetime(df.index, unit='s')
-            df = pd.read_csv(u(os.path.join(mdir, i)), header=None,
-                             parse_dates=[0],
-                             prefix='C',
-                             index_col=0,
-                             date_parser=date_parser,
-                             engine='c',
-                             na_filter=False,
-                             low_memory=False,
-                             # memory_map=True
-                             )
-            l.append(df)
-            # import gzip
-            # with gzip.open(os.path.join(mdir, i), 'rb') as f:
-            #     file_content = f.read()
-            #     print(len(file_content))
-        except pandas.io.common.EmptyDataError:
-            pass
+        f = os.path.join(u(mdir), u(i))
+        fn = extension_loader[get_loadable_file_ext_name(f)]
+        for ts, val in fn(f):
+            l.append((ts, val))
+
     logger.info("loading took - %s", time.time() - lt)
-    df = pd.concat(l)
+    # df = pd.concat(l)
+    # df = []
+
+    lt = time.time()
+    df = pd.DataFrame.from_records(l, index='index', columns=['index', 'C1'])
+    df.index = df.index.astype('float64').astype('int64').astype('datetime64[s]')
+    df.C1 = df.C1.astype('float64')
+    logger.info("converting took - %s", time.time() - lt)
+
     # logger.info("loaded %s datapoints", len(df))
 
     # print(df.describe())

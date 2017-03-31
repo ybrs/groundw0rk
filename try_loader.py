@@ -23,4 +23,9 @@ with gz:
 without gz:
     3230445 took -  10.704976797103882
 
+# simple csv/gz read
+took 3.5175700187683105
+# without gz
+took 3.2008490562438965
+
 """
